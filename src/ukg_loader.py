@@ -20,7 +20,7 @@ import pyodbc
 # ─── Config ──────────────────────────────────────────────────
 DB_CONN = os.getenv("UKG_DB_CONN", 
     "DRIVER={ODBC Driver 18 for SQL Server};"
-    "SERVER=localhost,1433;DATABASE=HR_OATRH;UID=sa;PWD=YourStrongPassw0rd;"
+    "SERVER=localhost,1433;DATABASE=YourDB;UID=sa;PWD=YourPassword;"
     "Encrypt=no;TrustServerCertificate=yes;"
 )
 BATCH_SIZE = 1000  # Rows per INSERT batch

@@ -4,6 +4,24 @@
 -- ============================================================
 -- Atomic MERGE: inserta nuevos empleados, actualiza existentes.
 -- Idempotente: correr 2 veces con los mismos datos → mismo resultado.
+--
+-- ⚠️ CONFIGURACIÓN REQUERIDA antes de deploy:
+--    Las tablas destino (dbo.empleados, dbo.agencias, dbo.puestos)
+--    y sus columnas deben adaptarse al schema de la base de datos
+--    objetivo. Ver sección "TARGET SCHEMA" abajo.
+-- ============================================================
+--
+-- TARGET SCHEMA (customize for your database):
+--   dbo.agencias  → agencias / departments
+--     Columnas requeridas: id (PK), codigo, nombre
+--     Columnas opcionales: codigo_prifas, activa
+--   dbo.puestos   → puestos / positions / jobs
+--     Columnas requeridas: id (PK), codigo_clase, titulo, agencia_id (FK)
+--   dbo.empleados → empleados / employees
+--     Columnas requeridas: id (PK), numero_empleado, nombre,
+--       apellido_paterno, agencia_id (FK), estado_empleado
+--     Columnas opcionales: apellido_materno, email_institucional,
+--       telefono, puesto_actual_id (FK), fecha_ingreso, activo
 -- ============================================================
 
 CREATE OR ALTER PROCEDURE dbo.ukg_merge_employees
@@ -11,39 +29,31 @@ CREATE OR ALTER PROCEDURE dbo.ukg_merge_employees
 AS
 BEGIN
     SET NOCOUNT ON;
-    SET XACT_ABORT ON;  -- Rollback on any error
+    SET XACT_ABORT ON;  -- Rollback on any error — Ley 126-2012 compliance
 
-    DECLARE @inserted INT = 0, @updated INT = 0, @errors INT = 0;
+    DECLARE @inserted INT = 0, @updated INT = 0;
     DECLARE @batch_hash NVARCHAR(64);
 
     BEGIN TRY
         BEGIN TRANSACTION;
 
         -- ─── Step 1: Resolve / create agencies ──────────────
+        -- NOTE: Customize INSERT column list to match your agencias table
         MERGE INTO dbo.agencias AS target
         USING (
             SELECT DISTINCT 
                 dept_code,
-                dept_name,
-                LEFT(dept_code, 3) AS codigo_prifas_candidate
+                dept_name
             FROM dbo.ukg_staging
             WHERE batch_id = @batch_id
         ) AS source
         ON target.codigo = source.dept_code
         WHEN NOT MATCHED THEN
-            INSERT (codigo, codigo_prifas, nombre, activa)
-            VALUES (
-                source.dept_code,
-                -- Ensure unique codigo_prifas (append counter if collision)
-                LEFT(source.dept_code, 3) + 
-                    CASE WHEN EXISTS(SELECT 1 FROM dbo.agencias WHERE codigo_prifas = LEFT(source.dept_code, 3))
-                    THEN RIGHT('00' + CAST(ROW_NUMBER() OVER(ORDER BY source.dept_code) AS NVARCHAR(2)), 2)
-                    ELSE '' END,
-                source.dept_name,
-                1
-            );
+            INSERT (codigo, nombre, activa)
+            VALUES (source.dept_code, source.dept_name, 1);
 
         -- ─── Step 2: Resolve / create positions ─────────────
+        -- NOTE: Customize INSERT column list to match your puestos table
         MERGE INTO dbo.puestos AS target
         USING (
             SELECT DISTINCT
@@ -62,6 +72,7 @@ BEGIN
             VALUES (source.position_code, source.position_title, source.agencia_id);
 
         -- ─── Step 3: MERGE employees (the big one) ──────────
+        -- NOTE: Customize column names to match your empleados table
         MERGE INTO dbo.empleados AS target
         USING (
             SELECT
@@ -109,10 +120,9 @@ BEGIN
                     source.agencia_id, source.puesto_id,
                     source.hire_date, source.estado_empleado, 1);
 
-        -- Count affected rows
         SET @inserted = @@ROWCOUNT;
 
-        -- ─── Step 4: Generate audit hash ────────────────────
+        -- ─── Step 4: Generate audit hash (Ley 126-2012) ─────
         SELECT @batch_hash = CONVERT(NVARCHAR(64), 
             HASHBYTES('SHA2_256', 
                 STRING_AGG(CONVERT(NVARCHAR(MAX), 
@@ -132,7 +142,6 @@ BEGIN
 
         COMMIT TRANSACTION;
 
-        -- Return summary
         SELECT 
             @batch_id AS batch_id,
             'COMPLETED' AS status,
@@ -144,7 +153,6 @@ BEGIN
         IF @@TRANCOUNT > 0
             ROLLBACK TRANSACTION;
 
-        -- Log error
         UPDATE dbo.ukg_import_log
         SET status = 'FAILED',
             error_summary = CONCAT(

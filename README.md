@@ -1,6 +1,7 @@
 # UKG → Oracle ETL
 
-**Pipeline de integración UKG Pro → base de datos Oracle/SQL Server para el Gobierno de Puerto Rico.**
+**Pipeline de integración UKG Pro → base de datos SQL Server.**
+Cumplimiento Ley 126-2012 — hash chain criptográfico por lote.
 
 Phase 1: SQL Staging approach — CSV → staging table → MERGE atómico → audit hash chain.
 
@@ -11,7 +12,7 @@ Phase 1: SQL Staging approach — CSV → staging table → MERGE atómico → a
 ```
 ┌──────────┐      ┌──────────────┐      ┌──────────────┐      ┌──────────┐
 │ SFTP     │─────▶│ ukg_pipeline │─────▶│ dbo.ukg_     │─────▶│ dbo.     │
-│ incoming │      │ .py          │      │ staging      │      │ empleados│
+│ incoming │      │ .py          │      │ staging      │      │ target   │
 └──────────┘      └──────────────┘      └──────┬───────┘      └──────────┘
                                                │
                                         ┌──────▼───────┐
@@ -20,7 +21,7 @@ Phase 1: SQL Staging approach — CSV → staging table → MERGE atómico → a
                                         └──────┬───────┘
                                                │
                                         ┌──────▼───────┐
-                                        │ Hash SHA-256 │ ◀── Ley 126
+                                        │ Hash SHA-256 │ ◀── Ley 126-2012
                                         │ audit chain  │
                                         └──────────────┘
 ```
@@ -35,21 +36,28 @@ Phase 1: SQL Staging approach — CSV → staging table → MERGE atómico → a
 
 ## 🚀 Quick Start
 
-### 1. Crear tablas en SQL Server
+### 1. Configurar base de datos
 
 ```bash
-sqlcmd -S localhost -U sa -P "YourStrongPassw0rd" -d HR_OATRH \
+# Set your target database
+export UKG_DB_CONN="DRIVER={ODBC Driver 18 for SQL Server};SERVER=localhost,1433;DATABASE=YourDB;UID=sa;PWD=YourPassword;Encrypt=no;TrustServerCertificate=yes;"
+```
+
+### 2. Crear tablas en SQL Server
+
+```bash
+sqlcmd -S localhost -U sa -P "YourPassword" -d YourDB \
   -i sql/01_staging_tables.sql \
   -i sql/02_merge_procedure.sql
 ```
 
-### 2. Instalar dependencias
+### 3. Instalar dependencias
 
 ```bash
 pip install -r requirements.txt
 ```
 
-### 3. Pipeline completo
+### 4. Pipeline completo
 
 ```bash
 # One-shot
@@ -59,7 +67,7 @@ python src/ukg_pipeline.py /sftp/employees_2026-06-22.csv
 python src/ukg_loader.py /sftp/employees_2026-06-22.csv
 ```
 
-### 4. Ejecutar MERGE manual
+### 5. Ejecutar MERGE manual
 
 ```sql
 EXEC dbo.ukg_merge_employees @batch_id = 'XXXXXXXX-XXXX-...'
@@ -82,10 +90,10 @@ EXEC dbo.ukg_merge_employees @batch_id = 'XXXXXXXX-XXXX-...'
 |---|---|
 | **Resume tras crash** | `dbo.ukg_checkpoint` guarda última fila procesada |
 | **Dead letter queue** | `dbo.ukg_error_log` captura filas con error |
-| **Idempotente** | MERGE usa `numero_empleado + agencia_id` como key |
+| **Idempotente** | MERGE usa key compuesta como identificador único |
 | **Atómico** | MERGE en una sola transacción SQL |
 | **Rollback** | `SET XACT_ABORT ON` — error → rollback completo |
-| **Audit Ley 126** | SHA-256 hash chain por batch en `import_hash` |
+| **Audit** | SHA-256 hash chain por batch — Ley 126-2012 |
 
 ---
 
@@ -125,14 +133,20 @@ ukg-oracle-etl/
 
 ---
 
-## 🔒 Compliance
+## 🔒 Compliance Legal
 
-- **Ley 126-2012**: SHA-256 hash chain audit por cada batch
-- **Data residency**: Datos en SQL Server on-premise/VPC
-- **TLS**: pyodbc con Encrypt=yes en producción
+### Ley 126-2012 — Firma Electrónica
+- SHA-256 hash chain audit por cada batch de importación
+- Cada lote genera un hash criptográfico que encadena todas las filas procesadas
+- Non-repudiation: el hash chain prueba que los datos no fueron alterados post-importación
+
+### Ley de Protección de Datos
+- Data residency: Datos en SQL Server on-premise o VPC controlada
+- TLS: pyodbc con `Encrypt=yes` en producción
+- Credenciales vía variables de entorno, nunca en código
 
 ---
 
 ## 📝 Licencia
 
-Internal — Gobierno de Puerto Rico / OATRH
+Internal — Gobierno de Puerto Rico
