@@ -73,10 +73,15 @@ BEGIN
 
         -- ─── Step 3: MERGE employees (the big one) ──────────
         -- NOTE: Customize column names to match your empleados table
+        -- SSN: encrypt before storing (AES-256 recommended).  
+        --       This procedure stores the plaintext SSN in the target
+        --       table. Production deployments should encrypt at the
+        --       application layer or via Always Encrypted.
         MERGE INTO dbo.empleados AS target
         USING (
             SELECT
                 s.eeid,
+                s.ssn,
                 s.first_name,
                 s.last_name,
                 s.middle_name,
@@ -102,6 +107,7 @@ BEGIN
            AND target.agencia_id = source.agencia_id
         WHEN MATCHED THEN
             UPDATE SET
+                ssn              = source.ssn,  -- encrypt in production
                 nombre           = source.first_name,
                 apellido_paterno = source.last_name,
                 apellido_materno = source.middle_name,
@@ -112,10 +118,10 @@ BEGIN
                 estado_empleado  = source.estado_empleado,
                 activo           = CASE WHEN source.estado_empleado = 'TERMINADO' THEN 0 ELSE 1 END
         WHEN NOT MATCHED THEN
-            INSERT (numero_empleado, nombre, apellido_paterno, apellido_materno,
+            INSERT (ssn, numero_empleado, nombre, apellido_paterno, apellido_materno,
                     email_institucional, telefono, agencia_id, puesto_actual_id,
                     fecha_ingreso, estado_empleado, activo)
-            VALUES (source.eeid, source.first_name, source.last_name,
+                    VALUES (source.ssn, source.eeid, source.first_name, source.last_name,
                     source.middle_name, source.email, source.phone,
                     source.agencia_id, source.puesto_id,
                     source.hire_date, source.estado_empleado, 1);

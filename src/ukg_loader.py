@@ -24,7 +24,7 @@ DB_CONN = os.getenv("UKG_DB_CONN",
     "Encrypt=no;TrustServerCertificate=yes;"
 )
 BATCH_SIZE = 1000  # Rows per INSERT batch
-EXPECTED_COLUMNS = 20  # UKG CSV columns
+EXPECTED_COLUMNS = 21  # UKG CSV columns (incl. SSN)
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger("ukg-loader")
@@ -62,6 +62,7 @@ def load_csv_to_staging(csv_path: str) -> dict:
                     batch.append((
                         batch_id, row_num,
                         row.get("EEID", ""),
+                        mask_ssn(row.get("SSN", "")),  # SSN
                         row.get("FirstName", ""),
                         row.get("LastName", ""),
                         row.get("MiddleName", ""),
@@ -139,7 +140,7 @@ def load_csv_to_staging(csv_path: str) -> dict:
 def flush_batch(cursor, batch):
     """INSERT batch into staging table."""
     cursor.executemany(
-        "INSERT INTO dbo.ukg_staging (batch_id, row_number, eeid, first_name, last_name, "
+        "INSERT INTO dbo.ukg_staging (batch_id, row_number, eeid, ssn, first_name, last_name, "
         "middle_name, position_code, position_title, dept_code, dept_name, cost_center, "
         "hire_date, rehire_date, termination_date, employee_status, email, phone, "
         "supervisor_name, supervisor_email, pay_rate, pay_type, flsa_status, "
@@ -188,6 +189,21 @@ def parse_decimal(val):
         return float(val.strip().replace("$", "").replace(",", ""))
     except ValueError:
         return None
+
+
+def mask_ssn(val):
+    """Validate SSN format and return masked version for logging.
+    Stores raw SSN for encryption at application layer.
+    Format accepted: XXX-XX-XXXX or XXXXXXXXX (9 digits)."""
+    if not val or not val.strip():
+        return None
+    ssn = val.strip()
+    # Strip dashes for validation
+    digits = ssn.replace("-", "")
+    if len(digits) == 9 and digits.isdigit():
+        return ssn  # Raw SSN stored; encrypted at application layer
+    logger.warning("Invalid SSN format: %s", ssn[:3] + "-XX-XXXX")
+    return None
 
 
 # ─── CLI Entry Point ─────────────────────────────────────────

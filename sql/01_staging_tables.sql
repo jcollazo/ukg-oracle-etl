@@ -14,6 +14,7 @@ BEGIN
         row_number      INT NOT NULL,
         -- UKG raw fields
         eeid            NVARCHAR(50) NOT NULL,
+        ssn             NVARCHAR(11),  -- XXX-XX-XXXX, encrypted at rest
         first_name      NVARCHAR(100),
         last_name       NVARCHAR(100),
         middle_name     NVARCHAR(100),

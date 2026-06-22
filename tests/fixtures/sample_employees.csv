@@ -1,6 +1,6 @@
-EEID,FirstName,LastName,MiddleName,PositionCode,PositionTitle,DepartmentCode,DepartmentName,CostCenter,HireDate,RehireDate,TerminationDate,Status,Email,Phone,SupervisorName,SupervisorEmail,PayRate,PayType,FLSAStatus,LocationCode
-10001,María,Colón,Reyes,ABG001,Abogado I,DPTO-JUS,Departamento de Justicia,CC-JUS-001,2018-03-15,,,ACTIVE,maria.colon@jus.pr.gov,787-555-0101,Carlos Rivera,carlos.rivera@jus.pr.gov,45000.00,SALARY,EXEMPT,SJ-CENTRO
-10002,José,Rivera,Santos,ANL002,Analista de RH,OP-OGP,Oficina de Gerencia y Presupuesto,CC-OGP-003,2020-07-01,,2025-12-31,TERMINATED,jose.rivera@ogp.pr.gov,787-555-0102,Marta Lugo,marta.lugo@ogp.pr.gov,38000.00,SALARY,EXEMPT,SJ-HATO REY
-10003,Carmen,Vega,,ASM003,Asistente Administrativo,DPTO-EDU,Departamento de Educación,CC-EDU-005,2015-01-10,,,ON_LEAVE,carmen.vega@edu.pr.gov,787-555-0103,Pedro Ortiz,,15.50,HOURLY,NONEXEMPT,BAYAMON
-10004,Roberto,,,TEC004,Técnico de TI,OP-OGP,Oficina de Gerencia y Presupuesto,CC-OGP-007,2023-06-01,,,ACTIVE,roberto.torres@ogp.pr.gov,787-555-0104,,,42000.00,SALARY,EXEMPT,
-10005,Ana,Díaz,Molina,,,,,CC-GOB-009,2024-01-15,,,ACTIVE,ana.diaz@gov.pr.gov,,,,,,,
+SSN,EEID,FirstName,LastName,MiddleName,PositionCode,PositionTitle,DepartmentCode,DepartmentName,CostCenter,HireDate,RehireDate,TerminationDate,Status,Email,Phone,SupervisorName,SupervisorEmail,PayRate,PayType,FLSAStatus,LocationCode
+583-12-3456,10001,María,Colón,Reyes,ABG001,Abogado I,DPTO-JUS,Departamento de Justicia,CC-JUS-001,2018-03-15,,,ACTIVE,maria.colon@jus.pr.gov,787-555-0101,Carlos Rivera,carlos.rivera@jus.pr.gov,45000.00,SALARY,EXEMPT,SJ-CENTRO
+582-23-4567,10002,José,Rivera,Santos,ANL002,Analista de RH,OP-OGP,Oficina de Gerencia y Presupuesto,CC-OGP-003,2020-07-01,,2025-12-31,TERMINATED,jose.rivera@ogp.pr.gov,787-555-0102,Marta Lugo,marta.lugo@ogp.pr.gov,38000.00,SALARY,EXEMPT,SJ-HATO REY
+581-34-5678,10003,Carmen,Vega,,ASM003,Asistente Administrativo,DPTO-EDU,Departamento de Educación,CC-EDU-005,2015-01-10,,,ON_LEAVE,carmen.vega@edu.pr.gov,787-555-0103,Pedro Ortiz,,15.50,HOURLY,NONEXEMPT,BAYAMON
+580-45-6789,10004,Roberto,,,TEC004,Técnico de TI,OP-OGP,Oficina de Gerencia y Presupuesto,CC-OGP-007,2023-06-01,,,ACTIVE,roberto.torres@ogp.pr.gov,787-555-0104,,,42000.00,SALARY,EXEMPT,
+579-56-7890,10005,Ana,Díaz,Molina,,,,,CC-GOB-009,2024-01-15,,,ACTIVE,ana.diaz@gov.pr.gov,,,,,,,
