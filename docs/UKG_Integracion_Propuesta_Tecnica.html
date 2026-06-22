@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<style>
+  @page { size: A4; margin: 2cm; @top-center { content: "Integración UKG Pro → SQL Server — Propuesta Técnica"; font-size: 8pt; color: #6C757D; } }
+  body { font-family: Calibri, 'Segoe UI', sans-serif; font-size: 11pt; color: #212529; line-height: 1.6; }
+  h1 { color: #12223A; font-size: 18pt; border-bottom: 2px solid #E5BD44; padding-bottom: 4pt; margin-top: 24pt; }
+  h2 { color: #12223A; font-size: 14pt; margin-top: 18pt; }
+  h3 { color: #16335C; font-size: 12pt; margin-top: 14pt; }
+  p { margin: 6pt 0; }
+  ul { margin: 4pt 0 4pt 20pt; }
+  li { margin: 2pt 0; }
+  table { width: 100%; border-collapse: collapse; margin: 10pt 0; font-size: 9pt; }
+  th { background-color: #12223A; color: white; padding: 6pt 8pt; text-align: left; font-weight: bold; }
+  td { padding: 5pt 8pt; border: 1px solid #DEE2E6; }
+  tr:nth-child(even) td { background-color: #F8F9FB; }
+  .divider { border-top: 2px solid #E5BD44; margin: 16pt 0; }
+  .cover-title { text-align: center; margin-top: 120pt; }
+  .cover-gold { color: #E5BD44; font-size: 14pt; font-weight: bold; text-align: center; }
+  .cover-main { color: #12223A; font-size: 26pt; font-weight: bold; text-align: center; }
+  .cover-sub { color: #6C757D; font-size: 14pt; text-align: center; }
+  .important { color: #0D6EFD; font-weight: bold; }
+  .code { font-family: 'Courier New', monospace; font-size: 9pt; color: #6C757D; background: #F8F9FB; padding: 8pt; }
+  .page-break { page-break-before: always; }
+  .sig-block { margin-top: 40pt; }
+</style>
+</head>
+<body>
+
+<!-- COVER PAGE -->
+<div class="cover-title">
+  <p class="cover-gold">GOBIERNO DE PUERTO RICO</p>
+  <div class="divider"></div>
+  <p class="cover-main">Integración UKG Pro HCM<br>→ SQL Server</p>
+  <p class="cover-sub">Propuesta Técnica — Diseño de ETL</p>
+  <div class="divider"></div>
+  <p style="text-align:center; color:#6C757D; font-size:11pt;">
+    Fecha: 22 de June de 2026<br>
+    Versión: 1.0<br>
+    Clasificación: Uso Interno — Gobierno de Puerto Rico<br><br>
+    Preparado por: Equipo de Desarrollo<br>
+    Reunión Técnica: OGP · UKG · Deloitte
+  </p>
+</div>
+
+<div class="page-break"></div>
+
+<!-- 1. RESUMEN EJECUTIVO -->
+<h1>1. Resumen Ejecutivo</h1>
+
+<p>Con el contrato de UKG/Kronos firmado, se ha iniciado la etapa de diseño de las
+integraciones del segmento HCM. UKG propone un modelo de una integración por tenant
+(un archivo por agencia), con reconstrucción del layout por cada tenant.
+Ese enfoque puede inflar significativamente los costos, el tiempo de desarrollo y el
+alcance del proyecto.</p>
+
+<p>Este documento propone que OGP asuma el diseño y construcción de la integración con su
+equipo técnico, utilizando un pipeline ETL propio que recibe un único archivo CSV estándar
+desde UKG Pro y lo procesa hacia SQL Server. Este enfoque:</p>
+
+<ul>
+  <li>Elimina la dependencia del modelo per-tenant de UKG.</li>
+  <li>Mantiene el estándar de integraciones mínimas establecido por Deloitte.</li>
+  <li>Reduce costos recurrentes (sin Boomi, sin licencias adicionales).</li>
+  <li>Ofrece control total sobre seguridad, encriptación y auditoría.</li>
+  <li>Cumple con la Ley 126-2012 de Firma Electrónica del Gobierno de Puerto Rico.</li>
+</ul>
+
+<div class="divider"></div>
+
+<!-- 2. ARQUITECTURA PROPUESTA -->
+<h1>2. Arquitectura Propuesta</h1>
+
+<p>La integración sigue un modelo SFTP Push + Python ETL + SQL Server Staging con MERGE atómico.
+El diseño minimiza la carga en memoria (~15 MB RAM) y garantiza resiliencia ante fallos.</p>
+
+<h2>2.1 Flujo de Datos</h2>
+
+<table>
+<tr><th>Fase</th><th>Componente</th><th>Responsable</th><th>Descripción</th></tr>
+<tr><td>1</td><td>UKG Pro HCM</td><td>UKG</td><td>Genera reporte CSV diario con layout estándar Deloitte.</td></tr>
+<tr><td>2</td><td>BI Publisher / SFTP</td><td>UKG</td><td>Deposita archivo CSV en SFTP /incoming/ a las 2 AM AST.</td></tr>
+<tr><td>3</td><td>ukg_pipeline.py</td><td>OGP/TI</td><td>Orquestador: lee CSV, valida, encripta SSN, carga staging.</td></tr>
+<tr><td>4</td><td>ukg_loader.py</td><td>OGP/TI</td><td>Streaming CSV → SQL Server staging batch (1K filas).</td></tr>
+<tr><td>5</td><td>crypto_utils.py</td><td>OGP/TI</td><td>AES-256-GCM: encripta SSN ANTES de tocar la base de datos.</td></tr>
+<tr><td>6</td><td>MERGE Procedure</td><td>SQL Server</td><td>MERGE atómico staging → tablas destino (agencias, puestos, empleados).</td></tr>
+<tr><td>7</td><td>SHA-256 Audit</td><td>SQL Server</td><td>Hash chain criptográfico por batch — Ley 126-2012.</td></tr>
+</table>
+
+<h2>2.2 Stack Tecnológico</h2>
+
+<table>
+<tr><th>Capa</th><th>Tecnología</th><th>Versión</th><th>Notas</th></tr>
+<tr><td>Origen</td><td>UKG Pro HCM</td><td>Cloud</td><td>Deloitte Standard Layout — 22 columnas</td></tr>
+<tr><td>Transporte</td><td>SFTP</td><td>TLS 1.3</td><td>Key-pair auth, carpeta /incoming/</td></tr>
+<tr><td>ETL</td><td>Python</td><td>3.12+</td><td>pyodbc + cryptography, ~15 MB RAM</td></tr>
+<tr><td>Encriptación</td><td>AES-256-GCM</td><td>cryptography 41+</td><td>Nonce aleatorio por fila, autenticado</td></tr>
+<tr><td>Base de Datos</td><td>SQL Server</td><td>2022+</td><td>ODBC Driver 18, TLS Encrypt=yes</td></tr>
+<tr><td>Auditoría</td><td>SHA-256</td><td>SQL HASHBYTES</td><td>Hash chain por batch — Ley 126-2012</td></tr>
+<tr><td>Orquestación</td><td>Cron</td><td>Linux</td><td>Schedule diario 2 AM AST</td></tr>
+</table>
+
+<div class="divider"></div>
+
+<!-- 3. LO QUE SE NECESITA DE UKG -->
+<h1>3. Entregable Requerido de UKG</h1>
+
+<p><strong>Para que el pipeline funcione, UKG debe proporcionar ÚNICAMENTE lo siguiente.
+No se requiere Boomi, ni integraciones por tenant, ni layouts personalizados.</strong></p>
+
+<table>
+<tr><th>#</th><th>Entregable</th><th>Especificación</th><th>Formato</th></tr>
+<tr><td>1</td><td>Archivo CSV diario</td><td>Un solo archivo con TODAS las agencias. Layout estándar Deloitte.</td><td>CSV, UTF-8</td></tr>
+<tr><td>2</td><td>Columnas requeridas</td><td>SSN, EEID, FirstName, LastName, MiddleName, PositionCode, PositionTitle, DepartmentCode, DepartmentName, CostCenter, HireDate, RehireDate, TerminationDate, Status, Email, Phone, SupervisorName, SupervisorEmail, PayRate, PayType, FLSAStatus, LocationCode</td><td>22 columnas</td></tr>
+<tr><td>3</td><td>Frecuencia</td><td>Diaria, programada a las 2:00 AM AST</td><td>Cron/Schedule</td></tr>
+<tr><td>4</td><td>Entrega</td><td>SFTP push a nuestro servidor. Carpeta: /incoming/</td><td>SFTP (TLS 1.3)</td></tr>
+<tr><td>5</td><td>Credenciales SFTP</td><td>Host, puerto, usuario, key pair pública</td><td>Configuración</td></tr>
+<tr><td>6</td><td>Mapeo de Status</td><td>ACTIVE → ACTIVO, TERMINATED → TERMINADO, ON_LEAVE → LICENCIA</td><td>Documento</td></tr>
+</table>
+
+<p class="important">IMPORTANTE: No se requiere Boomi, Dell Boomi AtomSphere, ni ningún middleware de UKG.
+El pipeline ETL desarrollado por OGP recibe el CSV directamente del SFTP y lo procesa
+sin intermediarios.</p>
+
+<div class="divider"></div>
+
+<!-- 4. SEGURIDAD -->
+<h1>4. Seguridad y Compliance Legal</h1>
+
+<h2>4.1 Encriptación AES-256-GCM (SSN)</h2>
+
+<p>El Social Security Number (SSN) se encripta en la capa de aplicación ANTES de que
+cualquier dato toque la base de datos. El texto plano del SSN nunca existe en staging
+ni en las tablas destino — solo ciphertext en formato base64.</p>
+
+<table>
+<tr><th>Etapa</th><th>SSN</th><th>Protección</th></tr>
+<tr><td>CSV entrante (SFTP)</td><td>583-12-3456 (plaintext)</td><td>TLS 1.3 en tránsito</td></tr>
+<tr><td>Python (encrypt)</td><td>AES-256-GCM → ciphertext</td><td>Nonce aleatorio 96-bit</td></tr>
+<tr><td>Staging (INSERT)</td><td>base64(ciphertext) ~88 chars</td><td>Nunca plaintext en DB</td></tr>
+<tr><td>MERGE (pass-through)</td><td>Ciphertext → tablas destino</td><td>Sin desencriptar</td></tr>
+<tr><td>Logs y auditoría</td><td>XXX-XX-1234</td><td>Solo últimos 4 dígitos</td></tr>
+<tr><td>Dead letter queue</td><td>SSN enmascarado</td><td>Sin plaintext ni ciphertext</td></tr>
+</table>
+
+<h2>4.2 Ley 126-2012 — Firma Electrónica</h2>
+<ul>
+  <li>Cada batch de importación genera un hash SHA-256 que encadena todas las filas procesadas.</li>
+  <li>El hash chain se almacena en dbo.ukg_import_log y permite verificar que los datos no fueron alterados.</li>
+  <li>Non-repudiation: el hash prueba integridad criptográfica post-importación.</li>
+  <li>MERGE atómico con XACT_ABORT ON: cualquier error → rollback total de la transacción.</li>
+</ul>
+
+<h2>4.3 Otras Consideraciones</h2>
+<ul>
+  <li>Credenciales de base de datos vía variables de entorno (nunca en código).</li>
+  <li>Llave de encriptación AES-256 en UKG_ENCRYPTION_KEY (secrets manager).</li>
+  <li>Conexión SQL Server con ODBC Driver 18 + TLS (Encrypt=yes en producción).</li>
+  <li>Data residency: todos los datos residen en servidores on-premise del Gobierno de Puerto Rico.</li>
+</ul>
+
+<div class="divider"></div>
+
+<!-- 5. RESILIENCIA -->
+<h1>5. Resiliencia y Monitoreo</h1>
+
+<table>
+<tr><th>Feature</th><th>Implementación</th><th>Descripción</th></tr>
+<tr><td>Resume tras crash</td><td>dbo.ukg_checkpoint</td><td>Guarda última fila procesada. Reinicio automático desde checkpoint.</td></tr>
+<tr><td>Dead letter queue</td><td>dbo.ukg_error_log</td><td>Filas con error se registran sin detener el pipeline.</td></tr>
+<tr><td>Idempotencia</td><td>MERGE compound key</td><td>Correr 2 veces con mismos datos → mismo resultado.</td></tr>
+<tr><td>Atomicidad</td><td>XACT_ABORT ON</td><td>Error en cualquier parte del MERGE → rollback total.</td></tr>
+<tr><td>Batch streaming</td><td>1,000 filas por lote</td><td>~10 MB RAM constante. No carga todo en memoria.</td></tr>
+<tr><td>Logging</td><td>Python logging + import_log</td><td>Timestamp, batch_id, status, hash audit trail.</td></tr>
+</table>
+
+<h2>5.1 Consultas de Monitoreo</h2>
+<p><strong>Últimos 10 imports:</strong></p>
+<p class="code">SELECT TOP 10 batch_id, filename, status, total_rows, inserted_rows,
+error_rows, completed_at FROM dbo.ukg_import_log ORDER BY created_at DESC;</p>
+
+<p><strong>Errores del último batch:</strong></p>
+<p class="code">SELECT row_number, eeid, error_message FROM dbo.ukg_error_log
+WHERE batch_id = (SELECT TOP 1 batch_id FROM dbo.ukg_import_log ORDER BY created_at DESC);</p>
+
+<div class="divider"></div>
+
+<!-- 6. COMPARATIVA -->
+<h1>6. Comparativa: Modelo OGP vs Modelo UKG (Per-Tenant)</h1>
+
+<table>
+<tr><th>Factor</th><th>Modelo OGP (Propuesto)</th><th>Modelo UKG (Per-Tenant)</th></tr>
+<tr><td>Costo de integración</td><td>Incluido en desarrollo interno</td><td>Costo por tenant + Boomi licensing</td></tr>
+<tr><td># de archivos</td><td>1 archivo CSV diario</td><td>1 archivo por agencia/tenant</td></tr>
+<tr><td>Layout</td><td>Único (estándar Deloitte)</td><td>Reconstrucción por cada tenant</td></tr>
+<tr><td>Tiempo de onboarding</td><td>Inmediato (un solo pipeline)</td><td>Por tenant (semanas/meses)</td></tr>
+<tr><td>Mantenimiento</td><td>1 codebase · cambios centralizados</td><td>N pipelines · cambios distribuidos</td></tr>
+<tr><td>Control de seguridad</td><td>Total (encryption in-house)</td><td>Depende de configuración UKG/Boomi</td></tr>
+<tr><td>Auditoría (Ley 126)</td><td>SHA-256 hash chain nativo</td><td>Depende de Boomi audit logs</td></tr>
+<tr><td>Escalabilidad</td><td>Streaming (~15 MB RAM fijo)</td><td>Crece lineal con # de tenants</td></tr>
+</table>
+
+<div class="divider"></div>
+
+<!-- 7. PRÓXIMOS PASOS -->
+<h1>7. Próximos Pasos</h1>
+
+<p><strong>Se solicita una reunión técnica a la brevedad con los siguientes objetivos:</strong></p>
+
+<ul>
+  <li>Revisar y validar los requisitos técnicos aquí expuestos.</li>
+  <li>Confirmar que UKG puede entregar el CSV diario único con layout estándar Deloitte.</li>
+  <li>Definir credenciales SFTP y mapeo de status codes.</li>
+  <li>Establecer cronograma: fecha de primer CSV de prueba → validación → producción.</li>
+  <li>Identificar entorno de staging/QA para pruebas de integración.</li>
+</ul>
+
+<div class="sig-block">
+  <div class="divider"></div>
+  <p><strong>Documento preparado por:</strong></p>
+  <p>Equipo de Desarrollo</p>
+  <p style="color:#6C757D;">Gobierno de Puerto Rico</p>
+  <p style="color:#6C757D; font-size:9pt;">Fecha: 22 de June de 2026</p>
+  <p style="color:#6C757D; font-size:9pt;">Repositorio: github.com/jcollazo/ukg-oracle-etl</p>
+</div>
+
+</body>
+</html>
