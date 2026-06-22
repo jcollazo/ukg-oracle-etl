@@ -118,6 +118,7 @@ WHERE batch_id = (SELECT TOP 1 batch_id FROM dbo.ukg_import_log ORDER BY created
 ```
 ukg-oracle-etl/
 ├── src/
+│   ├── crypto_utils.py    # AES-256-GCM encrypt/decrypt
 │   ├── ukg_loader.py      # CSV → staging (streaming)
 │   └── ukg_pipeline.py    # Orchestrator: load → merge
 ├── sql/
@@ -127,7 +128,7 @@ ukg-oracle-etl/
 │   └── fixtures/
 │       └── sample_employees.csv # 5 empleados de prueba
 ├── logs/                  # Cron output
-├── requirements.txt       # Solo pyodbc
+├── requirements.txt       # pyodbc + cryptography
 └── README.md
 ```
 
@@ -139,6 +140,36 @@ ukg-oracle-etl/
 - SHA-256 hash chain audit por cada batch de importación
 - Cada lote genera un hash criptográfico que encadena todas las filas procesadas
 - Non-repudiation: el hash chain prueba que los datos no fueron alterados post-importación
+
+### 🔐 Encriptación AES-256-GCM (SSN)
+- **SSN se encripta en la capa de aplicación ANTES de tocar la base de datos.**
+- Algoritmo: AES-256-GCM (Galois/Counter Mode) — autenticado, con integridad.
+- Nonce: 96 bits aleatorios por cada encriptación (nunca se reusa).
+- Ciphertext: `base64(nonce[12] || ciphertext || tag[16])` → ~88 chars para SSN 11 chars.
+- **Plaintext SSN nunca existe en staging ni en target — solo ciphertext.**
+- Logs: SSN enmascarado (`XXX-XX-1234`) — nunca plaintext ni ciphertext.
+
+```bash
+# Generar llave de encriptación (32 bytes = AES-256)
+python -c "import os,base64; print(base64.b64encode(os.urandom(32)).decode())"
+
+# Configurar en el entorno (NUNCA commitear al repo)
+export UKG_ENCRYPTION_KEY="PegarAquiLaLlaveGenerada=="
+
+# Sin esta variable, el pipeline aborta con error claro:
+# RuntimeError: UKG_ENCRYPTION_KEY not set.
+```
+
+**Rotación de llave:**
+```python
+from crypto_utils import rotate_key
+import pyodbc
+
+new_key = "NuevaLlaveBase64=="
+conn = pyodbc.connect(UKG_DB_CONN)
+rows = rotate_key(new_key, conn)  # Re-encripta todos los SSNs
+print(f"{rows} SSNs re-encriptados")
+```
 
 ### Ley de Protección de Datos
 - Data residency: Datos en SQL Server on-premise o VPC controlada

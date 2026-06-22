@@ -73,10 +73,9 @@ BEGIN
 
         -- ─── Step 3: MERGE employees (the big one) ──────────
         -- NOTE: Customize column names to match your empleados table
-        -- SSN: encrypt before storing (AES-256 recommended).  
-        --       This procedure stores the plaintext SSN in the target
-        --       table. Production deployments should encrypt at the
-        --       application layer or via Always Encrypted.
+        -- SSN: encrypted at application layer (AES-256-GCM) before storage.
+        --       This procedure passes ciphertext through to target. 
+        --       Decrypt at app layer when data needs to be read.
         MERGE INTO dbo.empleados AS target
         USING (
             SELECT
@@ -107,7 +106,7 @@ BEGIN
            AND target.agencia_id = source.agencia_id
         WHEN MATCHED THEN
             UPDATE SET
-                ssn              = source.ssn,  -- encrypt in production
+                ssn              = source.ssn,  -- AES-256-GCM ciphertext (already encrypted)
                 nombre           = source.first_name,
                 apellido_paterno = source.last_name,
                 apellido_materno = source.middle_name,

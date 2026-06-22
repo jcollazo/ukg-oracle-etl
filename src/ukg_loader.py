@@ -17,6 +17,8 @@ from datetime import UTC, datetime
 
 import pyodbc
 
+from crypto_utils import encrypt, mask_ssn
+
 # ─── Config ──────────────────────────────────────────────────
 DB_CONN = os.getenv("UKG_DB_CONN", 
     "DRIVER={ODBC Driver 18 for SQL Server};"
@@ -59,10 +61,14 @@ def load_csv_to_staging(csv_path: str) -> dict:
             batch = []
             for row_num, row in enumerate(reader, start=1):
                 try:
+                    ssn_raw = row.get("SSN", "")
+                    ssn_encrypted = encrypt(ssn_raw.strip()) if ssn_raw and ssn_raw.strip() else None
+                    # Mask SSN in raw_line for audit (no plaintext SSN in DB)
+                    raw_line = str(row).replace(ssn_raw, mask_ssn(ssn_raw) or "***")
                     batch.append((
                         batch_id, row_num,
                         row.get("EEID", ""),
-                        mask_ssn(row.get("SSN", "")),  # SSN
+                        ssn_encrypted,  # AES-256-GCM encrypted SSN
                         row.get("FirstName", ""),
                         row.get("LastName", ""),
                         row.get("MiddleName", ""),
@@ -83,10 +89,11 @@ def load_csv_to_staging(csv_path: str) -> dict:
                         row.get("PayType", ""),
                         row.get("FLSAStatus", ""),
                         row.get("LocationCode", ""),
-                        str(row)  # raw_line for audit
+                        raw_line  # masked SSN for audit
                     ))
                 except Exception as exc:
-                    log_error(cursor, batch_id, row_num, row.get("EEID"), str(exc), str(row))
+                    log_error(cursor, batch_id, row_num, row.get("EEID"), str(exc),
+                              str(row).replace(row.get("SSN", ""), mask_ssn(row.get("SSN", "")) or "***"))
                     error_rows += 1
 
                 total_rows += 1
@@ -189,21 +196,6 @@ def parse_decimal(val):
         return float(val.strip().replace("$", "").replace(",", ""))
     except ValueError:
         return None
-
-
-def mask_ssn(val):
-    """Validate SSN format and return masked version for logging.
-    Stores raw SSN for encryption at application layer.
-    Format accepted: XXX-XX-XXXX or XXXXXXXXX (9 digits)."""
-    if not val or not val.strip():
-        return None
-    ssn = val.strip()
-    # Strip dashes for validation
-    digits = ssn.replace("-", "")
-    if len(digits) == 9 and digits.isdigit():
-        return ssn  # Raw SSN stored; encrypted at application layer
-    logger.warning("Invalid SSN format: %s", ssn[:3] + "-XX-XXXX")
-    return None
 
 
 # ─── CLI Entry Point ─────────────────────────────────────────
