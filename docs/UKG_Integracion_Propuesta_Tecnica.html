@@ -37,7 +37,7 @@
   <div class="divider"></div>
   <p style="text-align:center; color:#6C757D; font-size:11pt;">
     Fecha: 22 de June de 2026<br>
-    Versión: 1.0<br>
+    Versión: 1.1 (nuevo: Sección 7 — Modelo Read-Only)<br>
     Clasificación: Uso Interno — Gobierno de Puerto Rico<br><br>
     Preparado por: Equipo de Desarrollo<br>
     Reunión Técnica: OGP · UKG · Deloitte
@@ -203,8 +203,104 @@ WHERE batch_id = (SELECT TOP 1 batch_id FROM dbo.ukg_import_log ORDER BY created
 
 <div class="divider"></div>
 
-<!-- 7. PRÓXIMOS PASOS -->
-<h1>7. Próximos Pasos</h1>
+<!-- 7. MODELO DE ACCESO READ-ONLY PARA AGENCIAS -->
+<h1>7. Modelo de Acceso Read-Only para Agencias</h1>
+
+<h2>7.1 Filosofía: Las agencias leen, no escriben</h2>
+
+<p>A diferencia del modelo tradicional de integración — donde cada agencia recibe una copia
+de los datos en su propia base de datos local (requiriendo INSERT, UPDATE, DELETE) — nuestro
+modelo <strong>read-only</strong> garantiza que las agencias solo puedan consultar datos,
+nunca modificarlos.</p>
+
+<p>Esto simplifica la arquitectura, elimina la necesidad de bases de datos locales en cada
+agencia, y reduce la superficie de ataque:</p>
+
+<ul>
+  <li>La agencia NO necesita SQL Server local.</li>
+  <li>La agencia NO tiene permisos de escritura (INSERT/UPDATE/DELETE).</li>
+  <li>La agencia NO instala middleware ni runtimes.</li>
+  <li>Una sola fuente de verdad: SQL Server central en OGP.</li>
+</ul>
+
+<h2>7.2 Opciones de Acceso Read-Only</h2>
+
+<h3>Opción A — Connection String Read-Only (Directo a DB)</h3>
+<table>
+<tr><th>#</th><th>Paso</th><th>Responsable</th><th>Detalle</th></tr>
+<tr><td>1</td><td>Crear login por agencia</td><td>OGP</td><td>CREATE LOGIN agencia_xxx WITH PASSWORD='***'</td></tr>
+<tr><td>2</td><td>Otorgar SELECT únicamente</td><td>OGP</td><td>GRANT SELECT ON empleados, agencias TO agencia_xxx</td></tr>
+<tr><td>3</td><td>Entregar connection string</td><td>OGP</td><td>ODBC Driver 18 + TLS; solo lectura</td></tr>
+<tr><td>4</td><td>App de la agencia consume</td><td>Agencia</td><td>SELECT * FROM empleados WHERE agencia='OGP'</td></tr>
+</table>
+
+<h3>Opción B — API REST (Más Seguro, Sin Acceso Directo a DB)</h3>
+<table>
+<tr><th>#</th><th>Paso</th><th>Responsable</th><th>Detalle</th></tr>
+<tr><td>1</td><td>Registrar agencia en el Hub</td><td>OGP</td><td>POST /api/agencies → genera API key</td></tr>
+<tr><td>2</td><td>Entregar API key + endpoint</td><td>OGP</td><td>GET https://hub.pr.gov/api/data/empleados</td></tr>
+<tr><td>3</td><td>App de la agencia consume</td><td>Agencia</td><td>HTTP GET con Authorization: Bearer &lt;api-key&gt;</td></tr>
+<tr><td>4</td><td>Rate limiting por agencia</td><td>Hub</td><td>100 req/min por API key</td></tr>
+</table>
+
+<p class="important">Opción B es la recomendada: la agencia nunca tiene acceso directo a la base
+de datos. Solo consume datos vía API REST autenticada con API key. Rate limiting previene abuso.
+Logs de acceso por agencia habilitan auditoría completa.</p>
+
+<h2>7.3 ¿Qué Hace Boomi en Este Escenario?</h2>
+
+<p>Boomi opera bajo un modelo fundamentalmente distinto. Su modo <strong>por defecto</strong> requiere
+INSERT, UPDATE, DELETE en las bases de datos destino:</p>
+
+<table>
+<tr><th>Operación Boomi</th><th>Permiso Requerido</th><th>Riesgo</th></tr>
+<tr><td>Database Connector — Insert</td><td>INSERT</td><td>Escritura no autorizada</td></tr>
+<tr><td>Database Connector — Update</td><td>UPDATE</td><td>Modificación de datos</td></tr>
+<tr><td>Database Connector — Delete</td><td>DELETE</td><td>Eliminación de datos</td></tr>
+<tr><td>Database Connector — Upsert</td><td>INSERT + UPDATE</td><td>Inserción/modificación silenciosa</td></tr>
+</table>
+
+<p><em>Fuente: Boomi Documentation — "Database connector: Use to select, insert, update, and delete records in a database."</em></p>
+
+<p>Para lograr un modelo read-only, Boomi requeriría su producto adicional <strong>Boomi Data Hub</strong>:</p>
+
+<ul>
+  <li>Boomi Data Hub es un producto APARTE del Boomi Integration básico.</li>
+  <li>Expone datos vía APIs REST para consumo externo.</li>
+  <li>Requiere licencia adicional y configuración de modelos de datos maestros.</li>
+</ul>
+
+<h2>7.4 Comparativa de Costos — Acceso Read-Only</h2>
+
+<table>
+<tr><th>Concepto</th><th>Boomi Data Hub</th><th>Nuestra Solución</th></tr>
+<tr><td>Licencia base</td><td>$20K–$40K/año (Data Hub)</td><td>$0</td></tr>
+<tr><td>UKG Pro Connector</td><td>$17K/año</td><td>$0 (SFTP estándar)</td></tr>
+<tr><td>Atoms (mínimo 3 ambientes)</td><td>~$20K/año ($550/mes c/u)</td><td>$0</td></tr>
+<tr><td>SQL Server</td><td>Licencia SQL Server</td><td>SQL Server Express (gratis)</td></tr>
+<tr><td>Infraestructura</td><td>Servidores para Atoms</td><td>1 VPS (~$240/año)</td></tr>
+<tr><td><strong>Total anual estimado</strong></td><td><strong>~$57K–$77K/año</strong></td><td><strong>~$240/año</strong></td></tr>
+<tr><td><strong>Ahorro</strong></td><td></td><td><strong>~99.7%</strong></td></tr>
+</table>
+
+<p class="important">Con 150 agencias, el costo de Boomi escalaría a $200K+/año en conectores y Atoms
+por tenant. Nuestra solución mantiene el costo fijo independientemente del número de agencias.</p>
+
+<h2>7.5 ¿La Agencia Necesita Instalar Algo?</h2>
+
+<table>
+<tr><th>Componente</th><th>Boomi</th><th>Nosotros</th></tr>
+<tr><td>Runtime/Middleware</td><td>Atom (~512 MB Java)</td><td>Nada</td></tr>
+<tr><td>Base de datos local</td><td>Sí (Atom escribe en ella)</td><td>No</td></tr>
+<tr><td>Conexión</td><td>JDBC + credenciales de escritura</td><td>API key o connection string read-only</td></tr>
+<tr><td>Mantenimiento</td><td>Actualizar Atom + Java + DB</td><td>Cero</td></tr>
+<tr><td>Licencia</td><td>$550+/mes por Atom</td><td>$0</td></tr>
+</table>
+
+<div class="divider"></div>
+
+<!-- 8. PRÓXIMOS PASOS -->
+<h1>8. Próximos Pasos</h1>
 
 <p><strong>Se solicita una reunión técnica a la brevedad con los siguientes objetivos:</strong></p>
 
